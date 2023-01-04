@@ -250,6 +250,88 @@ char * concatStr(const char * s1, const char * s2)
 	return result;
 }
 
+__global__ void dp_cuda(int * inPixels ,int width, int height, int r, 
+			int * outMatrix, int * outMatrixTrace)
+{
+	int d[3] = {-1,0,1};
+	
+	int c = blockIdx.x * blockDim.x + threadIdx.x;
+	outMatrix[r*width + c] = 1000000000;
+	for (int k = 0; k < 3; k++)
+		if (r > 0){
+			int tmp = outMatrix[(r-1)*width + c+d[k]] + inPixels[r*width + c];
+			if (0 <= c+d[k] && c+d[k] < width && 
+				outMatrix[r*width + c] > tmp){
+				outMatrix[r*width + c] = tmp;
+				outMatrixTrace[r*width + c] = d[k];
+			}
+		}
+		else
+		{
+			outMatrix[r*width + c] = inPixels[r*width + c];
+			outMatrixTrace[r*width + c] = -1;
+		}
+}
+
+__global__ void create_pair(int * d_in, int width, int height, pair_int_int * out_pair){
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+	out_pair[i].first = d_in[(height-1) * width + i];
+	out_pair[i].second = i;
+}
+
+void get_k_best_cuda(int * important_matrix, int * important_matrix_trace, 
+				int width,int height, int k, pair_int_int * k_best,int blockSize)
+{
+	size_t nBytes = width * sizeof(pair_int_int);
+	pair_int_int * tmp_list = (pair_int_int *)malloc(width *sizeof(pair_int_int));
+	dim3 gridSize_x1((width - 1) / blockSize + 1);
+	int * d_important_matrix;
+	pair_int_int * out_pair;
+	
+	CHECK(cudaMalloc(&d_important_matrix, nBytes));
+	CHECK(cudaMalloc(&out_pair, nBytes));
+	CHECK(cudaMemcpy(d_important_matrix, important_matrix, nBytes, cudaMemcpyHostToDevice));
+	create_pair<<<gridSize_x1, blockSize>>>(d_important_matrix,width, height, out_pair);
+	cudaDeviceSynchronize();
+    CHECK(cudaGetLastError());
+	CHECK(cudaMemcpy(tmp_list, d_important_matrix, nBytes, cudaMemcpyDeviceToHost));
+
+	// for (int i=0; i < width; i++)
+	// {
+	// 	tmp_list[i].first = important_matrix[(height-1) * width + i];
+	// 	tmp_list[i].second = i;
+	// }
+	
+	qsort(tmp_list, width, sizeof(pair_int_int),compare);
+
+	// số lượng K quá nhỏ để nên làm song song
+	for (int i=0; i<k; i++){
+		// get trace không thể song song
+		get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+i*height);
+	}
+	
+}
+
+void create_important_matrix_cuda(int * important_pixels ,int width, int height, 
+			int * outMatrix, int * outMatrixTrace, int blockSize){
+	// nice version
+	size_t nBytes = width * height * sizeof(int);
+	dim3 gridSize_x1((width - 1) / blockSize + 1);
+	
+	int * d_important_pixels, * d_important_matrix, * d_important_matrix_trace;
+	CHECK(cudaMalloc(&d_important_pixels, nBytes));
+	CHECK(cudaMalloc(&d_important_matrix, nBytes));
+	CHECK(cudaMalloc(&d_important_matrix_trace, nBytes));
+	CHECK(cudaMemcpy(d_important_pixels, important_pixels, nBytes, cudaMemcpyHostToDevice));
+	for (int r=0; r<height; r++){
+		dp_cuda<<<gridSize_x1, blockSize>>>(d_important_pixels,width, height, r, d_important_matrix,d_important_matrix_trace);
+        cudaDeviceSynchronize();
+        CHECK(cudaGetLastError());
+	}
+	CHECK(cudaMemcpy(outMatrix, d_important_matrix, nBytes, cudaMemcpyDeviceToHost));
+	CHECK(cudaMemcpy(outMatrixTrace, d_important_matrix_trace, nBytes, cudaMemcpyDeviceToHost));	
+}
+
 int main(int argc, char ** argv)
 {	
 	
@@ -267,6 +349,9 @@ int main(int argc, char ** argv)
 	int * important_pixels = (int *)malloc(width * height * sizeof(int));
 	int * important_matrix = (int *)malloc(width * height * sizeof(int));
 	int * important_matrix_trace = (int *)malloc(width * height * sizeof(int));
+	//############################################################
+	int * out_cuda = (int *)malloc(width * height * sizeof(int));
+	int * out_trace_cuda = (int *)malloc(width * height * sizeof(int));
 	convertRgb2Gray(inPixels, width, height, grayscalePixels);
 
 	int filterWidth = 3;
@@ -279,9 +364,12 @@ int main(int argc, char ** argv)
 	apply_kernel(grayscalePixels, width, height, filter2, filterWidth, applyKernelPixels_2);
 	cal_important_pixel(applyKernelPixels_1,applyKernelPixels_2,important_pixels,width, height);
 	create_important_matrix(important_pixels,width, height,important_matrix,important_matrix_trace);
+	
+	create_important_matrix_cuda(important_pixels,width, height,out_cuda,out_trace_cuda,512); // nice version
+	
 	int k = 2;
 	pair_int_int * k_best_list = (pair_int_int *)malloc(k * height * sizeof(pair_int_int));
-	get_k_best(important_matrix,important_matrix_trace, width, height, k, k_best_list);
+	get_k_best_cuda(important_matrix,important_matrix_trace, width, height, k, k_best_list,512);
 	for (int r = 0; r < k; r++) {
         for (int c = 0; c < height; c++)
 			printf("%i: %i %i \n",c, k_best_list[r*height + c].first, k_best_list[r*height+c].second);
