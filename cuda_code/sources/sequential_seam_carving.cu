@@ -462,9 +462,9 @@ int main(int argc, char ** argv) {
 		free(k_best_list); // Free seam list after finishing
 
 		// Prepare for next loop
-		char *fName = (char*)malloc(sizeof(char) * 20);
-		sprintf(fName, "inter_%i.pnm", loopTimes);
-		writePnm(outPixels, 3, outWidth, height, fName);
+		// char *fName = (char*)malloc(sizeof(char) * 20);
+		// sprintf(fName, "inter_%i.pnm", loopTimes);
+		// writePnm(outPixels, 3, outWidth, height, fName);
 		width = outWidth;
 		seamNeeded -= actualK;
 		loopTimes++;
