@@ -131,22 +131,24 @@ int compare_position(const void *a, const void *b) {
 int get_trace(int *important_matrix_trace, int position,int width, int height, pair_int_int *res)
 {
 	int tmp_height = height, tmp_position = position;
+	int tmp_position_old = position;
+
 	while (tmp_height--){
-		res[tmp_height] = {tmp_height, tmp_position};
-		// printf("%i %i %i\n",res[i].first, res[i].second,important_matrix_trace[tmp_height*width+tmp_position]);
-		if (tmp_height==0) break;
+		printf("x%i ", tmp_height);
 		int count = 0;
+		if (tmp_height==0) break;
 		while (important_matrix_trace[tmp_height*width+tmp_position] == -1){
-			tmp_position = (tmp_position + 1) % 3;
-			count+=1;
-			printf("height %i - position %i\n", tmp_height, tmp_position);
 			if (count == 3) return 0;
+			tmp_position = tmp_position_old + d[count];
+			count += 1;
 		}
+		res[tmp_height] = {tmp_height, tmp_position};
+		tmp_position_old = tmp_position;
 		int tmp = d[important_matrix_trace[tmp_height*width+tmp_position]];
 		important_matrix_trace[tmp_height*width+tmp_position] = -1;
 		tmp_position += tmp;
 	}
-	printf("Yes\n");
+	res[tmp_height] = {tmp_height, tmp_position};
 	return 1;
 }
 
@@ -164,7 +166,7 @@ int get_k_best(int * important_matrix, int * important_matrix_trace,
 	int count = 0;
 	for (int i=0; i<width && count<k; i++){
 		// get trace không thể song song
-		count += get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+i*height);
+		count += get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+count*height);
 		printf("%i ", count);
 	}
 	return count;
@@ -231,7 +233,7 @@ int get_k_best_cuda(int * important_matrix, int * important_matrix_trace,
 	int count = 0;
 	for (int i=0; i<width && count<k; i++){
 		// get trace không thể song song
-		count += get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+i*height);
+		count += get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+count*height);
 		// printf("%i ", count);
 	}
 	return count;
