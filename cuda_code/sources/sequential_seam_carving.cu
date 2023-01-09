@@ -257,7 +257,7 @@ void create_important_matrix_cuda(int * important_pixels ,int width, int height,
 	CHECK(cudaMemcpy(outMatrixTrace, d_important_matrix_trace, nBytes, cudaMemcpyDeviceToHost));	
 }
 
-void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, int desiredWidth, pair_int_int* seams, int k, int mode, int leftover=0) {
+void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pair_int_int* seams, int k, int mode) {
 	if (mode == 0) {
 		// Reduce image size
 		// Loop for each row of input image
@@ -276,6 +276,19 @@ void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, int
 		}
 	} else {
 		// Enlarge image size
+		for (int i = 0; i < height; ++i) {
+			// Use 2 pointers to duplicate seams in a row
+			int outIte = width + k - 1, inIte = width - 1, seamIte = k - 1;
+			while (inIte >= 0) {
+				outPixels[outIte] = inPixels[inIte];
+				--outIte;
+				if (seamIte >= 0 && inIte == seams[seamIte * height + i].second) {
+					outPixels[outIte] = inPixels[inIte];
+					--outIte;
+				}
+				--inIte;
+			}
+		}
 	}
 	// // Copy the applied pixels to output
 	// for (int i = 0 ; i < height; ++i) {
@@ -289,18 +302,21 @@ void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, int
 
 int main(int argc, char ** argv) {
     // Parse command-line arguments
-    if (argc != 4 && argc != 5)
+    if (argc != 4 && argc != 6)
 	{
-		printf("Invalid run arguments.\nCommand: <executable> <path-to-input-PNM-image> <path-to-output-PNM-image> <desired-image-width> <cuda-block-size>\n");
+		printf("Invalid run arguments.\nCommand: <executable> <path-to-input-PNM-image> <path-to-output-PNM-image> <desired-image-width> <max-seam-ratio> <cuda-block-size>\n");
 		return EXIT_FAILURE;
 	}
     char* inImg = argv[1];
     char* outImg = argv[2];
 	int desiredWidth = atoi(argv[3]);
     int blockSize = 32;
-    if (argc == 5)
-        blockSize = atoi(argv[4]);
-    printf("Run with block size: %d x %d\n", blockSize, blockSize);
+	float maxSeamRatio = 0.5;
+    if (argc >= 5)
+        maxSeamRatio = atof(argv[4]);
+	if (argc == 6)
+		blockSize = atoi(argv[5]);
+    printf("Run with block size: %d x %d - Max seam ratio: %.2f\n", blockSize, blockSize, maxSeamRatio);
 
     // Read input image
     int numChannels, width, height;
@@ -392,8 +408,8 @@ int main(int argc, char ** argv) {
 	time = timer.Elapsed();
 	printf("Find K least important seams - Processing time: %f ms\n\n", time);
 	total_time_sequential += time;
-
 	printf("Needed %d seams. Actual seams found: %d\n\n", k, actualK);
+
 	// Sort seam positions in each row for efficient remove/duplicate
 	qsort(k_best_list, actualK * height, sizeof(pair_int_int), compare_position);
 
@@ -401,7 +417,7 @@ int main(int argc, char ** argv) {
 	uchar3 *outPixels = (uchar3 *)malloc(desiredWidth * height * sizeof(uchar3));
 
 	timer.Start();
-	applyKSeams(inPixels, outPixels, width, height, desiredWidth, k_best_list, actualK, mode, leftover);
+	applyKSeams(inPixels, outPixels, width, height, k_best_list, actualK, mode);
 	timer.Stop();
 	time = timer.Elapsed();
 	printf("Reduce/Enlarge image - Processing time: %f ms\n\n", time);
