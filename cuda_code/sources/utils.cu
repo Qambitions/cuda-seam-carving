@@ -15,6 +15,12 @@
 	}\
 }
 
+// Utility structure to store seam info
+struct pair_int_int {
+    	int first;
+    	int second;
+};
+
 // A class to count the elapsed running time
 struct GpuTimer
 {
@@ -128,4 +134,19 @@ void writePnm(void* pixels, int numChannels, int width, int height,
 bool StartsWith(const char *a, const char *b) {
    if(strncmp(a, b, strlen(b)) == 0) return 1;
    return 0;
+}
+
+// Utility function to color seams for debugging
+void colorSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pair_int_int* seams, int k) {
+	for (int i = 0; i < height; ++i) {
+		for (int j = 0; j < width; ++j)
+			outPixels[i * width + j] = inPixels[i * width + j];
+	}
+	for (int i = 0; i < k * height; ++i) {
+		int row = seams[i].first;
+		int col = seams[i].second;
+		outPixels[row * width + col].x = 255;
+		outPixels[row * width + col].y = 0;
+		outPixels[row * width + col].z = 0;
+	}
 }

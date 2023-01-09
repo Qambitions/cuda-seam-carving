@@ -4,11 +4,6 @@
 /****************************************************************************/
 /* IMPLEMENTATION OF SEQUENTIAL SEAM CARVING */
 /****************************************************************************/
-struct pair_int_int {
-    	int first;
-    	int second;
-};
-
 int d[3] = {-1,0,1};
 
 void convert_rgb_to_grayscale(uchar3 * inPixels, int width, int height, uint8_t * outPixels)
@@ -271,19 +266,5 @@ void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pai
 				--inIte;
 			}
 		}
-	}
-}
-
-void colorSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pair_int_int* seams, int k) {
-	for (int i = 0; i < height; ++i) {
-		for (int j = 0; j < width; ++j)
-			outPixels[i * width + j] = inPixels[i * width + j];
-	}
-	for (int i = 0; i < k * height; ++i) {
-		int row = seams[i].first;
-		int col = seams[i].second;
-		outPixels[row * width + col].x = 255;
-		outPixels[row * width + col].y = 0;
-		outPixels[row * width + col].z = 0;
 	}
 }
