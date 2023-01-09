@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 // Utility function to check for CUDA return errors
 #define CHECK(call)\
