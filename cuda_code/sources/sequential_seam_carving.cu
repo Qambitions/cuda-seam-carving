@@ -273,3 +273,17 @@ void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pai
 		}
 	}
 }
+
+void colorSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pair_int_int* seams, int k) {
+	for (int i = 0; i < height; ++i) {
+		for (int j = 0; j < width; ++j)
+			outPixels[i * width + j] = inPixels[i * width + j];
+	}
+	for (int i = 0; i < k * height; ++i) {
+		int row = seams[i].first;
+		int col = seams[i].second;
+		outPixels[row * width + col].x = 255;
+		outPixels[row * width + col].y = 0;
+		outPixels[row * width + col].z = 0;
+	}
+}

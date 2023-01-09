@@ -129,6 +129,14 @@ int main(int argc, char ** argv) {
 		total_time_sequential += time;
 		avgTimes[5] += time;
 
+        // For debugging, output the seam visualization to a file
+        uchar3 *seamPixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
+        colorSeams(inPixels, seamPixels, width, height, k_best_list, actualK);
+        char *fName = (char*)malloc(sizeof(char) * 20);
+		sprintf(fName, "seam_loop_%i.pnm", loopTimes);
+		writePnm(seamPixels, 3, width, height, fName);
+        free(seamPixels);
+
 		free(importantMatrix); // Free the importance matrix after we're done with it
 		free(importantMatrixTrace);
 

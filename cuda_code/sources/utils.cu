@@ -112,12 +112,13 @@ void writePnm(void* pixels, int numChannels, int width, int height,
 		printf("Cannot write %s\n", fileName);
 		exit(EXIT_FAILURE);
 	}
-	fprintf(f, "%i %i\n255", width, height);
+	fprintf(f, "%i %i\n255\n", width, height);
 	if (numChannels == 1) {
-		fprintf(f, "\n");
+		// fprintf(f, "\n");
 		for (int i = 0; i < width * height * numChannels; i++)
 			fprintf(f, "%hhu\n", ((uint8_t*) pixels)[i]);
 	} else if (numChannels == 3) {
+		fseek(f, -1, SEEK_CUR); // Handle trailing newline when switching from print to write
 		fwrite(pixels, sizeof(uchar3) * width, height, f);
 	}
 	fclose(f);
