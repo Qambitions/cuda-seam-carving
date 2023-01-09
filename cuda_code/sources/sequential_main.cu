@@ -11,7 +11,7 @@ int main(int argc, char ** argv) {
     char* outImg = argv[2];
 	int desiredWidth = atoi(argv[3]);
     int blockSize = 32;
-	float maxSeamRatio = 0.02;
+	float maxSeamRatio = 0.05;
     if (argc >= 5)
         maxSeamRatio = atof(argv[4]);
 	if (argc == 6)
@@ -68,8 +68,8 @@ int main(int argc, char ** argv) {
 		float filter1[9] = {1,0,-1,2,0,-2,1,0,-1}; // x-Sobel filter
 		float filter2[9] = {1,2,1,0,0,0,-1,-2,-1}; // y-Sobel filter
 		int filterWidth = 3;
-		uint8_t * filteredPixels_1 = (uint8_t *)malloc(width * height * sizeof(uint8_t));
-		uint8_t * filteredPixels_2 = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+		int * filteredPixels_1 = (int *)malloc(width * height * sizeof(int));
+		int * filteredPixels_2 = (int *)malloc(width * height * sizeof(int));
 		
 		timer.Start();
 		apply_filter(grayscalePixels, width, height, filter1, filterWidth, filteredPixels_1);

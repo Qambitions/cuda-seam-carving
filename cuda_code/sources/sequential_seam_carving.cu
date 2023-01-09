@@ -28,7 +28,7 @@ void convert_rgb_to_grayscale(uchar3 * inPixels, int width, int height, uint8_t 
 	
 }
 
-void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int filterWidth, uint8_t* outPixels) {
+void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int filterWidth, int* outPixels) {
 	int half_fWidth = filterWidth / 2;
 	// Loop over image
 	for (int r = 0; r < height; ++r) {
@@ -56,12 +56,12 @@ void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int 
 				}
 			}
 
-			outPixels[pos] = (uint8_t) fpixel;
+			outPixels[pos] = (int) fpixel;
 		}
 	}
 }
 
-void calc_px_importance(uint8_t *inPixels_1 , uint8_t *inPixels_2, int* outPixels,int width, int height)
+void calc_px_importance(int *inPixels_1 , int *inPixels_2, int* outPixels,int width, int height)
 {
 	for (int i = 0; i < height*width; i++) 
 		outPixels[i] = abs(inPixels_1[i])  + abs(inPixels_2[i]);	
@@ -266,6 +266,7 @@ void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pai
 				if (seamIte >= 0 && inIte == seams[i * k + seamIte].second) {
 					outPixels[i * outputWidth + outIte] = inPixels[i * width + inIte];
 					--outIte;
+					--seamIte;
 				}
 				--inIte;
 			}
