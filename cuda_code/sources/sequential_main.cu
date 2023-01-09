@@ -11,7 +11,7 @@ int main(int argc, char ** argv) {
     char* outImg = argv[2];
 	int desiredWidth = atoi(argv[3]);
     int blockSize = 32;
-	float maxSeamRatio = 0.05;
+	float maxSeamRatio = 0.02;
     if (argc >= 5)
         maxSeamRatio = atof(argv[4]);
 	if (argc == 6)
@@ -36,7 +36,7 @@ int main(int argc, char ** argv) {
 		seamNeeded = desiredWidth - width;
 		mode = 1;
 	}
-	int maxSeam = int(width * maxSeamRatio);
+	int maxSeam = int(width * maxSeamRatio) > 1? int(width * maxSeamRatio) : 1;
 	printf("Total seams needed: %i - Max usable seams: %i\n\n", seamNeeded, maxSeam);
 
 	// Variables to keep total & avg run time
