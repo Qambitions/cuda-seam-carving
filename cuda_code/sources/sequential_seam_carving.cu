@@ -23,7 +23,7 @@ void convert_rgb_to_grayscale(uchar3 * inPixels, int width, int height, uint8_t 
 	
 }
 
-void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int filterWidth, int* outPixels) {
+void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int filterWidth, uint8_t* outPixels) {
 	int half_fWidth = filterWidth / 2;
 	// Loop over image
 	for (int r = 0; r < height; ++r) {
@@ -31,7 +31,7 @@ void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int 
 			// Set output element to default value
 			int pos = r * width + c;
 			float fpixel = 0; //Use float to avoiding rounding error during summation
-
+			// float red = 0, green = 0, blue = 0;
 			// Loop over filter
 			for (int f_r = -half_fWidth; f_r <= half_fWidth; ++f_r) {
 				for (int f_c = -half_fWidth; f_c <= half_fWidth; ++f_c) {
@@ -48,15 +48,19 @@ void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int 
 						f_pos = (f_r + half_fWidth) * filterWidth + (f_c + half_fWidth);
 					// Do convolution
 					fpixel += inPixels[in_pos] * filter[f_pos];
+					// red += inPixels[in_pos].x * filter[f_pos];
+					// green += inPixels[in_pos].y * filter[f_pos];
+					// blue += inPixels[in_pos].z * filter[f_pos];
 				}
 			}
 
-			outPixels[pos] = (int) fpixel;
+			// outPixels[pos] = 0.299f*red + 0.587f*green + 0.114f*blue;
+			outPixels[pos] = (uint8_t) fpixel;
 		}
 	}
 }
 
-void calc_px_importance(int *inPixels_1 , int *inPixels_2, int* outPixels,int width, int height)
+void calc_px_importance(uint8_t *inPixels_1 , uint8_t *inPixels_2, int* outPixels,int width, int height)
 {
 	for (int i = 0; i < height*width; i++) 
 		outPixels[i] = abs(inPixels_1[i])  + abs(inPixels_2[i]);	
@@ -90,7 +94,7 @@ int compare(const void *a, const void *b) {
     pair_int_int *pairA = (pair_int_int *)a;
     pair_int_int *pairB = (pair_int_int *)b;
   
-    return pairA->first > pairB->first;
+    return pairA->first < pairB->first;
 }
 
 int compare_position(const void *a, const void *b) {
@@ -258,7 +262,7 @@ void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pai
 			while (inIte >= 0) {
 				outPixels[i * outputWidth + outIte] = inPixels[i * width + inIte];
 				--outIte;
-				if (seamIte >= 0 && inIte == seams[i * k + seamIte].second) {
+				while (seamIte >= 0 && inIte == seams[i * k + seamIte].second) {
 					outPixels[i * outputWidth + outIte] = inPixels[i * width + inIte];
 					--outIte;
 					--seamIte;

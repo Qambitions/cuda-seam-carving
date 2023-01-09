@@ -2,9 +2,9 @@
 
 int main(int argc, char ** argv) {
     // Parse command-line arguments
-    if (argc < 4 || argc > 6)
+    if (argc < 4 || argc > 7)
 	{
-		printf("Invalid run arguments.\nCommand: <executable> <path-to-input-PNM-image> <path-to-output-PNM-image> <desired-image-width> <max-seam-ratio> <cuda-block-size>\n");
+		printf("Invalid run arguments.\nCommand: <executable> <path-to-input-PNM-image> <path-to-output-PNM-image> <desired-image-width> <is-verbose> <max-seam-ratio> <cuda-block-size>\n");
 		return EXIT_FAILURE;
 	}
     char* inImg = argv[1];
@@ -12,10 +12,21 @@ int main(int argc, char ** argv) {
 	int desiredWidth = atoi(argv[3]);
     int blockSize = 32;
 	float maxSeamRatio = 0.05;
-    if (argc >= 5)
-        maxSeamRatio = atof(argv[4]);
-	if (argc == 6)
-		blockSize = atoi(argv[5]);
+	int isVerbose = 1;
+	if (argc >= 5)
+		isVerbose = atoi(argv[4]);
+    if (argc >= 6)
+        maxSeamRatio = atof(argv[5]);
+	if (argc == 7)
+		blockSize = atoi(argv[6]);
+	if (desiredWidth < 0) {
+		printf("Desired width can't be negative\n");
+		return EXIT_FAILURE;
+	}
+	if (maxSeamRatio < 0 || maxSeamRatio > 1) {
+		printf("Max seam ratio must be a floating-point number within range [0,1]\n");
+		return EXIT_FAILURE;
+	}
     printf("Run with block size: %d x %d - Max seam ratio: %.2f\n", blockSize, blockSize, maxSeamRatio);
 
     // Read input image
@@ -46,7 +57,8 @@ int main(int argc, char ** argv) {
 	int loopTimes = 1;
 
 	while (seamNeeded > 0) {
-		printf("LOOP #%i\n\n", loopTimes);
+		if (isVerbose)
+			printf("LOOP #%i\n\n", loopTimes);
 		// Use output from previous loop as input
 		if (inPixels != nullptr)
 			free(inPixels);
@@ -60,32 +72,44 @@ int main(int argc, char ** argv) {
 		convert_rgb_to_grayscale(inPixels, width, height, grayscalePixels);
 		timer.Stop();
 		float time = timer.Elapsed();
-		printf("Processing time: %f ms - Convert RGB to Grayscale\n", time);
+		if (isVerbose)
+			printf("Processing time: %f ms - Convert RGB to Grayscale\n", time);
 		total_time_sequential += time;
 		avgTimes[0] += time;
+
+		// char fName1[] = "grayscale.pnm";
+		// writePnm(grayscalePixels, 1, width, height, fName1);
 
 		// Do convolution with edge detection filters
 		float filter1[9] = {1,0,-1,2,0,-2,1,0,-1}; // x-Sobel filter
 		float filter2[9] = {1,2,1,0,0,0,-1,-2,-1}; // y-Sobel filter
 		int filterWidth = 3;
-		int * filteredPixels_1 = (int *)malloc(width * height * sizeof(int));
-		int * filteredPixels_2 = (int *)malloc(width * height * sizeof(int));
-		
+		uint8_t * filteredPixels_1 = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+		uint8_t * filteredPixels_2 = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+
 		timer.Start();
 		apply_filter(grayscalePixels, width, height, filter1, filterWidth, filteredPixels_1);
 		timer.Stop();
 		time = timer.Elapsed();
-		printf("Processing time: %f ms - Apply x-Sobel filter\n", time);
+		if (isVerbose)
+			printf("Processing time: %f ms - Apply x-Sobel filter\n", time);
 		total_time_sequential += time;
 		avgTimes[1] += time;
+
+		// char fName2[] = "xsobel.pnm";
+		// writePnm(filteredPixels_1, 1, width, height, fName2);
 
 		timer.Start();
 		apply_filter(grayscalePixels, width, height, filter2, filterWidth, filteredPixels_2);
 		timer.Stop();
 		time = timer.Elapsed();
-		printf("Processing time: %f ms - Apply y-Sobel filter\n", time);
+		if (isVerbose)
+			printf("Processing time: %f ms - Apply y-Sobel filter\n", time);
 		total_time_sequential += time;
 		avgTimes[2] += time;
+
+		// char fName3[] = "ysobel.pnm";
+		// writePnm(filteredPixels_2, 1, width, height, fName3);
 
 		free(grayscalePixels); // Free grayscale matrix after done with it
 
@@ -96,7 +120,8 @@ int main(int argc, char ** argv) {
 		calc_px_importance(filteredPixels_1, filteredPixels_2, pixelImportance, width, height);
 		timer.Stop();
 		time = timer.Elapsed();
-		printf("Processing time: %f ms - Calculate pixel importance\n", time);
+		if (isVerbose)
+			printf("Processing time: %f ms - Calculate pixel importance\n", time);
 		total_time_sequential += time;
 		avgTimes[3] += time;
 
@@ -111,7 +136,8 @@ int main(int argc, char ** argv) {
 		create_important_matrix(pixelImportance, width, height, importantMatrix, importantMatrixTrace);
 		timer.Stop();
 		time = timer.Elapsed();
-		printf("Processing time: %f ms - Construct least pixel-importance matrix\n", time);
+		if (isVerbose)
+			printf("Processing time: %f ms - Construct least pixel-importance matrix\n", time);
 		total_time_sequential += time;
 		avgTimes[4] += time;
 
@@ -124,18 +150,22 @@ int main(int argc, char ** argv) {
 		int actualK = get_k_best(importantMatrix, importantMatrixTrace, width, height, seamUse, k_best_list);
 		timer.Stop();
 		time = timer.Elapsed();
-		printf("Processing time: %f ms - Find K least important seams\n", time);
-		printf("Needed %d seams. Actual seams found: %d\n", seamUse, actualK);
+		if (isVerbose) {
+			printf("Processing time: %f ms - Find K least important seams\n", time);
+			printf("Needed %d seams. Actual seams found: %d\n", seamUse, actualK);
+		}
 		total_time_sequential += time;
 		avgTimes[5] += time;
 
         // For debugging, output the seam visualization to a file
-        uchar3 *seamPixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
-        colorSeams(inPixels, seamPixels, width, height, k_best_list, actualK);
-        char *fName = (char*)malloc(sizeof(char) * 20);
-		sprintf(fName, "seam_loop_%i.pnm", loopTimes);
-		writePnm(seamPixels, 3, width, height, fName);
-        free(seamPixels);
+		// if ((loopTimes - 1) % 3 == 0) {
+		// 	uchar3 *seamPixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
+		// 	colorSeams(inPixels, seamPixels, width, height, k_best_list, actualK);
+		// 	char *fName = (char*)malloc(sizeof(char) * 20);
+		// 	sprintf(fName, "seam_loop_%i.pnm", loopTimes);
+		// 	writePnm(seamPixels, 3, width, height, fName);
+		// 	free(seamPixels);
+		// }
 
 		free(importantMatrix); // Free the importance matrix after we're done with it
 		free(importantMatrixTrace);
@@ -145,7 +175,8 @@ int main(int argc, char ** argv) {
 		qsort(k_best_list, actualK * height, sizeof(pair_int_int), compare_position);
 		timer.Stop();
 		time = timer.Elapsed();
-		printf("Processing time: %f ms - Sort K seams' positions\n", time);
+		if (isVerbose)
+			printf("Processing time: %f ms - Sort K seams' positions\n", time);
 		total_time_sequential += time;
 		avgTimes[6] += time;
 
@@ -160,7 +191,8 @@ int main(int argc, char ** argv) {
 		applyKSeams(inPixels, outPixels, width, height, k_best_list, actualK, mode);
 		timer.Stop();
 		time = timer.Elapsed();
-		printf("Processing time: %f ms - Reduce/Enlarge image\n\n", time);
+		if (isVerbose)
+			printf("Processing time: %f ms - Reduce/Enlarge image\n\n", time);
 		total_time_sequential += time;
 		avgTimes[7] += time;
 

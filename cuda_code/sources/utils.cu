@@ -94,7 +94,8 @@ void readPnm(char * fileName, int &numChannels, int &width, int &height, uchar3 
 	}
 
 	pixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
-	fread(pixels, sizeof(uchar3), width * height, f);
+	fseek(f, 1, SEEK_CUR); // Handle redundant newline character when switching between scan and read
+	fread(pixels, sizeof(uchar3) * width, height, f);
 	fclose(f);
 }
 
@@ -124,7 +125,7 @@ void writePnm(void* pixels, int numChannels, int width, int height,
 		for (int i = 0; i < width * height * numChannels; i++)
 			fprintf(f, "%hhu\n", ((uint8_t*) pixels)[i]);
 	} else if (numChannels == 3) {
-		fseek(f, -1, SEEK_CUR); // Handle trailing newline when switching from print to write
+		// fseek(f, -1, SEEK_CUR); // Handle trailing newline when switching from print to write
 		fwrite(pixels, sizeof(uchar3) * width, height, f);
 	}
 	fclose(f);
