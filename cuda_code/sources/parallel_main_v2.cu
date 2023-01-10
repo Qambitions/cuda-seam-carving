@@ -83,7 +83,7 @@ int main(int argc, char ** argv) {
 			filteredPixels[i] = (int *)malloc(width * height * sizeof(int));
 
 		timer.Start();
-		apply_filter_cuda(grayscalePixels, width, height, filteredPixels, blockSize);	
+		apply_filter_cuda(grayscalePixels, width, height, filteredPixels, blockSize, 2);	
 		timer.Stop();
 		time = timer.Elapsed();
 		if (isVerbose)

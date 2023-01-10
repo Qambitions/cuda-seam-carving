@@ -140,7 +140,7 @@ __global__ void filter_kernel2(int* inPixels, int width, int height, int* outPix
 	}
 }
 
-void apply_filter_cuda(int* inPixels, int width, int height, int** outPixels, int blockSize) {
+void apply_filter_cuda(int* inPixels, int width, int height, int** outPixels, int blockSize, int version = 1) {
 	// Pin host memory for async memcpy
 	size_t nBytes = width * height * sizeof(int);
 	CHECK(cudaHostRegister(inPixels, nBytes, cudaHostRegisterDefault));
@@ -169,11 +169,11 @@ void apply_filter_cuda(int* inPixels, int width, int height, int** outPixels, in
 		// Set grid size
 		dim3 blkSize(blockSize, blockSize);
 		dim3 gridSize((width - 1) / blockSize + 1, (height - 1) / blockSize + 1);
-		filter_kernel<<<gridSize, blkSize, (blkSize.x + 1) * (blkSize.y + 1) * sizeof(int), streams[i]>>>(d_in, width, height, d_out[i], i);
-		CHECK(cudaDeviceSynchronize());
+		if (version == 2)
+			filter_kernel<<<gridSize, blkSize, (blkSize.x + 1) * (blkSize.y + 1) * sizeof(int), streams[i]>>>(d_in, width, height, d_out[i], i);
+		else filter_kernel2<<<gridSize, blkSize, 0, streams[i]>>>(d_in, width, height, d_out[i], i);
 		// Copy device output to host
 		CHECK(cudaMemcpyAsync(outPixels[i], d_out[i], nBytes, cudaMemcpyDeviceToHost, streams[i]));
-		CHECK(cudaDeviceSynchronize());
 	}
 
 	// Wait for all streams to complete
@@ -210,6 +210,32 @@ __global__ void calc_important_kernel(int *inPixels, int* outPixels,int width, i
 		for (int j = 0; j < NFILTERS; ++j)
 			outPixels[pos] += abs(inPixels[j * width * height + pos]);
 	}
+}
+
+void calc_px_importance_cuda(int **inPixels, int* outPixels,int width, int height, int blockSize)
+{
+	// Allocate device memory
+	int *d_inPixels;
+	int *d_outPixels;
+	size_t nBytes = width * height * sizeof(int);
+	CHECK(cudaMalloc(&d_inPixels, NFILTERS * nBytes));
+	CHECK(cudaMalloc(&d_outPixels, nBytes));
+
+	// Copy data to device memory
+	for (int i = 0; i < NFILTERS; ++i)
+		CHECK(cudaMemcpy(d_inPixels + i * width * height, inPixels[i], nBytes, cudaMemcpyHostToDevice));
+	
+	// Set grid size and call kernel
+	dim3 blkSize(blockSize, blockSize);
+	dim3 gridSize((width - 1) / blockSize + 1, (height - 1) / blockSize + 1);
+	calc_important_kernel<<<gridSize, blkSize>>>(d_inPixels, d_outPixels, width, height);
+	CHECK(cudaDeviceSynchronize());
+	CHECK(cudaGetLastError());
+	// Copy result from device memory
+	CHECK(cudaMemcpy(outPixels, d_outPixels, nBytes, cudaMemcpyDeviceToHost));
+	// Free device memory
+	CHECK(cudaFree(d_inPixels));
+	CHECK(cudaFree(d_outPixels));
 }
 
 void calc_px_importance_cuda(int **inPixels, int* outPixels,int width, int height, int blockSize)
