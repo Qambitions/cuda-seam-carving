@@ -396,7 +396,14 @@ __global__ void applyKSeams_kernel(uchar3* inPixels, uchar3* outPixels, int widt
 				outPixels[i * outputWidth + outIte] = inPixels[i * width + inIte];
 				++outIte;
 				while (outIte < outputWidth && seamIte < k && inIte == seams[i * k + seamIte].second) {
-					outPixels[i * outputWidth + outIte] = inPixels[i * width + inIte];
+					int left = i * width + inIte - 1, right = i * width + inIte + 1;
+					if (left < 0)
+						left++;
+					if (right >= width)
+						right--;
+					outPixels[i * outputWidth + outIte].x = ((int)inPixels[left].x + (int)inPixels[right].x) / 2;
+					outPixels[i * outputWidth + outIte].y = ((int)inPixels[left].y + (int)inPixels[right].y) / 2;
+					outPixels[i * outputWidth + outIte].z = ((int)inPixels[left].z + (int)inPixels[right].z) / 2;
 					++outIte;
 					++seamIte;
 				}
