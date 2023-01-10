@@ -238,32 +238,6 @@ void calc_px_importance_cuda(int **inPixels, int* outPixels,int width, int heigh
 	CHECK(cudaFree(d_outPixels));
 }
 
-void calc_px_importance_cuda(int **inPixels, int* outPixels,int width, int height, int blockSize)
-{
-	// Allocate device memory
-	int *d_inPixels;
-	int *d_outPixels;
-	size_t nBytes = width * height * sizeof(int);
-	CHECK(cudaMalloc(&d_inPixels, NFILTERS * nBytes));
-	CHECK(cudaMalloc(&d_outPixels, nBytes));
-
-	// Copy data to device memory
-	for (int i = 0; i < NFILTERS; ++i)
-		CHECK(cudaMemcpy(d_inPixels + i * width * height, inPixels[i], nBytes, cudaMemcpyHostToDevice));
-	
-	// Set grid size and call kernel
-	dim3 blkSize(blockSize, blockSize);
-	dim3 gridSize((width - 1) / blockSize + 1, (height - 1) / blockSize + 1);
-	calc_important_kernel<<<gridSize, blkSize>>>(d_inPixels, d_outPixels, width, height);
-	CHECK(cudaDeviceSynchronize());
-	CHECK(cudaGetLastError());
-	// Copy result from device memory
-	CHECK(cudaMemcpy(outPixels, d_outPixels, nBytes, cudaMemcpyDeviceToHost));
-	// Free device memory
-	CHECK(cudaFree(d_inPixels));
-	CHECK(cudaFree(d_outPixels));
-}
-
 int get_trace(int *important_matrix_trace, int position,int width, int height, pair_int_int *res)
 {
 	int tmp_height = height, tmp_position = position;
