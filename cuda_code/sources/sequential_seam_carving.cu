@@ -4,9 +4,9 @@
 /****************************************************************************/
 /* IMPLEMENTATION OF SEQUENTIAL SEAM CARVING */
 /****************************************************************************/
-int d[3] = {-1,0,1};
+int d[3] = {0,1,-1};
 
-void convert_rgb_to_grayscale(uchar3 * inPixels, int width, int height, uint8_t * outPixels)
+void convert_rgb_to_grayscale(uchar3 * inPixels, int width, int height, int * outPixels)
 {
 	// Reminder: gray = 0.299*red + 0.587*green + 0.114*blue  
 	for (int r = 0; r < height; r++)
@@ -23,7 +23,8 @@ void convert_rgb_to_grayscale(uchar3 * inPixels, int width, int height, uint8_t 
 	
 }
 
-void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int filterWidth, uint8_t* outPixels) {
+// void apply_filter(uchar3* inPixels, int width, int height, float * filter, int filterWidth, uchar3* outPixels) {
+void apply_filter(int* inPixels, int width, int height, float * filter, int filterWidth, int* outPixels) {
 	int half_fWidth = filterWidth / 2;
 	// Loop over image
 	for (int r = 0; r < height; ++r) {
@@ -31,7 +32,7 @@ void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int 
 			// Set output element to default value
 			int pos = r * width + c;
 			float fpixel = 0; //Use float to avoiding rounding error during summation
-			// float red = 0, green = 0, blue = 0;
+
 			// Loop over filter
 			for (int f_r = -half_fWidth; f_r <= half_fWidth; ++f_r) {
 				for (int f_c = -half_fWidth; f_c <= half_fWidth; ++f_c) {
@@ -47,23 +48,23 @@ void apply_filter(uint8_t* inPixels, int width, int height, float * filter, int 
 					int in_pos = i * width + j,
 						f_pos = (f_r + half_fWidth) * filterWidth + (f_c + half_fWidth);
 					// Do convolution
-					fpixel += inPixels[in_pos] * filter[f_pos];
-					// red += inPixels[in_pos].x * filter[f_pos];
-					// green += inPixels[in_pos].y * filter[f_pos];
-					// blue += inPixels[in_pos].z * filter[f_pos];
+					fpixel += (float) inPixels[in_pos] * filter[f_pos];
 				}
 			}
-
-			// outPixels[pos] = 0.299f*red + 0.587f*green + 0.114f*blue;
-			outPixels[pos] = (uint8_t) fpixel;
+			
+			// fpixel = min(max(0.f, fpixel), 255.f);
+			outPixels[pos] = (int) fpixel;
 		}
 	}
 }
 
-void calc_px_importance(uint8_t *inPixels_1 , uint8_t *inPixels_2, int* outPixels,int width, int height)
+void calc_px_importance(int *inPixels_1 , int *inPixels_2, int* outPixels,int width, int height)
 {
-	for (int i = 0; i < height*width; i++) 
+	for (int i = 0; i < height*width; i++) {
+		// float in1 = 0.299f * inPixels_1[i].x + 0.587f*inPixels_1[i].y + 0.114f*inPixels_1[i].z;
+		// float in2 = 0.299f * inPixels_2[i].x + 0.587f*inPixels_2[i].y + 0.114f*inPixels_2[i].z;
 		outPixels[i] = abs(inPixels_1[i])  + abs(inPixels_2[i]);	
+	}
 }
 
 void create_important_matrix(int * inPixels ,int width, int height, 
@@ -74,11 +75,12 @@ void create_important_matrix(int * inPixels ,int width, int height,
 			outMatrix[r*width + c] = 1000000000;
 			for (int k = 0; k < 3; k++)
 				if (r > 0){
-					int tmp = outMatrix[(r-1)*width + c+d[k]] + inPixels[r*width + c];
-					if (0 <= c+d[k] && c+d[k] < width && 
-						outMatrix[r*width + c] > tmp){
-						outMatrix[r*width + c] = tmp;
-						outMatrixTrace[r*width + c] = k;
+					if (0 <= c+d[k] && c+d[k] < width) {
+						int tmp = outMatrix[(r-1)*width + c+d[k]] + inPixels[r*width + c];
+						if (outMatrix[r*width + c] > tmp){
+							outMatrix[r*width + c] = tmp;
+							outMatrixTrace[r*width + c] = k;
+						}
 					}
 				}
 				else
@@ -94,7 +96,7 @@ int compare(const void *a, const void *b) {
     pair_int_int *pairA = (pair_int_int *)a;
     pair_int_int *pairB = (pair_int_int *)b;
   
-    return pairA->first < pairB->first;
+    return pairA->first > pairB->first;
 }
 
 int compare_position(const void *a, const void *b) {
@@ -139,6 +141,10 @@ int get_k_best(int * important_matrix, int * important_matrix_trace,
 		tmp_list[i].second = i;
 	}
 	qsort(tmp_list, width, sizeof(pair_int_int),compare);
+	for (int i = 0; i < 20; ++i) {
+		printf("%i %i\n", tmp_list[i].first, tmp_list[i].second);
+	}
+  printf("\n");
 	int count = 0;
 	for (int i=0; i<width && count<k; i++){
 		// get trace không thể song song

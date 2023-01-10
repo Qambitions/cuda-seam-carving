@@ -65,8 +65,12 @@ int main(int argc, char ** argv) {
 		inPixels = outPixels;
 		int seamUse = seamNeeded > maxSeam? maxSeam : seamNeeded;
 
+		// for (int i = 0; i < 20; ++i)
+		// 	printf("%i %i %i\n", inPixels[i].x, inPixels[i].y, inPixels[i].z);
+		// printf("\n");
+
 		// Convert RGB image to grayscale for easy processing
-		uint8_t *grayscalePixels = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+		int *grayscalePixels = (int *)malloc(width * height * sizeof(int));
 		
 		timer.Start();
 		convert_rgb_to_grayscale(inPixels, width, height, grayscalePixels);
@@ -77,15 +81,23 @@ int main(int argc, char ** argv) {
 		total_time_sequential += time;
 		avgTimes[0] += time;
 
-		// char fName1[] = "grayscale.pnm";
-		// writePnm(grayscalePixels, 1, width, height, fName1);
+		char fName1[] = "grayscale.pnm";
+		writePnm(grayscalePixels, 1, width, height, fName1);
 
 		// Do convolution with edge detection filters
 		float filter1[9] = {1,0,-1,2,0,-2,1,0,-1}; // x-Sobel filter
 		float filter2[9] = {1,2,1,0,0,0,-1,-2,-1}; // y-Sobel filter
 		int filterWidth = 3;
-		uint8_t * filteredPixels_1 = (uint8_t *)malloc(width * height * sizeof(uint8_t));
-		uint8_t * filteredPixels_2 = (uint8_t *)malloc(width * height * sizeof(uint8_t));
+		int * filteredPixels_1 = (int *)malloc(width * height * sizeof(int));
+		int * filteredPixels_2 = (int *)malloc(width * height * sizeof(int));
+		// uchar3 * filteredPixels_1 = (uchar3 *)malloc(width * height * sizeof(uchar3));
+		// uchar3 * filteredPixels_2 = (uchar3 *)malloc(width * height * sizeof(uchar3));
+
+		// Experiment
+		float filter3[9] = {-1,-1,-1,-1,8,-1,-1,-1,-1};
+		int * filteredPixels_3 = (int *)malloc(width * height * sizeof(int));
+		apply_filter(grayscalePixels, width, height, filter3, filterWidth, filteredPixels_3);
+
 
 		timer.Start();
 		apply_filter(grayscalePixels, width, height, filter1, filterWidth, filteredPixels_1);
@@ -96,8 +108,8 @@ int main(int argc, char ** argv) {
 		total_time_sequential += time;
 		avgTimes[1] += time;
 
-		// char fName2[] = "xsobel.pnm";
-		// writePnm(filteredPixels_1, 1, width, height, fName2);
+		char fName2[] = "xsobel.pnm";
+		writePnm(filteredPixels_1, 1, width, height, fName2);
 
 		timer.Start();
 		apply_filter(grayscalePixels, width, height, filter2, filterWidth, filteredPixels_2);
@@ -108,8 +120,8 @@ int main(int argc, char ** argv) {
 		total_time_sequential += time;
 		avgTimes[2] += time;
 
-		// char fName3[] = "ysobel.pnm";
-		// writePnm(filteredPixels_2, 1, width, height, fName3);
+		char fName3[] = "ysobel.pnm";
+		writePnm(filteredPixels_2, 1, width, height, fName3);
 
 		free(grayscalePixels); // Free grayscale matrix after done with it
 
@@ -118,6 +130,7 @@ int main(int argc, char ** argv) {
 		
 		timer.Start();
 		calc_px_importance(filteredPixels_1, filteredPixels_2, pixelImportance, width, height);
+		calc_px_importance(pixelImportance, filteredPixels_3, pixelImportance, width, height);
 		timer.Stop();
 		time = timer.Elapsed();
 		if (isVerbose)
@@ -127,6 +140,7 @@ int main(int argc, char ** argv) {
 
 		free(filteredPixels_1); // Free filtered pixels after we're done with them
 		free(filteredPixels_2);
+		free(filteredPixels_3);
 
 		// Construct least pixel-importance matrix
 		int * importantMatrix = (int *)malloc(width * height * sizeof(int));
@@ -158,14 +172,15 @@ int main(int argc, char ** argv) {
 		avgTimes[5] += time;
 
         // For debugging, output the seam visualization to a file
-		// if ((loopTimes - 1) % 3 == 0) {
-		// 	uchar3 *seamPixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
-		// 	colorSeams(inPixels, seamPixels, width, height, k_best_list, actualK);
-		// 	char *fName = (char*)malloc(sizeof(char) * 20);
-		// 	sprintf(fName, "seam_loop_%i.pnm", loopTimes);
-		// 	writePnm(seamPixels, 3, width, height, fName);
-		// 	free(seamPixels);
-		// }
+		if ((loopTimes - 1) % 3 == 0) {
+			uchar3 *seamPixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
+			colorSeams(inPixels, seamPixels, width, height, k_best_list, actualK);
+			char *fName = (char*)malloc(sizeof(char) * 20);
+			sprintf(fName, "seam_loop_%i.pnm", loopTimes);
+			writePnm(seamPixels, 3, width, height, fName);
+			free(seamPixels);
+			free(fName);
+		}
 
 		free(importantMatrix); // Free the importance matrix after we're done with it
 		free(importantMatrixTrace);
@@ -205,6 +220,7 @@ int main(int argc, char ** argv) {
 		width = outWidth;
 		seamNeeded -= actualK;
 		loopTimes++;
+		// break;
 	}
 
 	// Save output image
