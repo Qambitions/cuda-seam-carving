@@ -2,59 +2,162 @@
 #include <cuda_runtime.h>
 
 /****************************************************************************/
-/* IMPLEMENTATION OF SEQUENTIAL SEAM CARVING */
+/* IMPLEMENTATION OF PARALLEL SEAM CARVING */
 /****************************************************************************/
+const int NFILTERS = 4;
+
+__constant__ int filterWidth = 3;
+
+__constant__ float filters[4][9] = {
+	// left-Sobel filter
+	{1.0,0.0,-1.0,2.0,0.0,-2.0,1.0,0.0,-1.0},
+	// right-Sobel filter
+	{-1.0,0.0,1.0,-2.0,0.0,2.0,-1.0,0.0,1.0},
+	// top-Sobel filter
+	{1.0,2.0,1.0,0.0,0.0,0.0,-1.0,-2.0,-1.0},
+	// outline filter
+	{-1.0,-1.0,-1.0,-1.0,8.0,-1.0,-1.0,-1.0,-1.0}
+};
+
 int d[3] = {-1,0,1};
 
-void convert_rgb_to_grayscale(uchar3 * inPixels, int width, int height, int * outPixels)
-{
+__global__ void rgb_to_grayscale_kernel(uchar3 * inPixels, int width, int height, int * outPixels) {
 	// Reminder: gray = 0.299*red + 0.587*green + 0.114*blue  
-	for (int r = 0; r < height; r++)
-	{
-		for (int c = 0; c < width; c++)
-		{
-			int i = r * width + c;
-			uint8_t red = inPixels[i].x;
-			uint8_t green = inPixels[i].y;
-			uint8_t blue = inPixels[i].z;
-			outPixels[i] = 0.299f*red + 0.587f*green + 0.114f*blue;
-		}
+	int r = blockIdx.y * blockDim.y + threadIdx.y;
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+	if (c < width && r < height) {
+		int i = r * width + c;
+		uint8_t red = inPixels[i].x;
+		uint8_t green = inPixels[i].y;
+		uint8_t blue = inPixels[i].z;
+		outPixels[i] = 0.299f*red + 0.587f*green + 0.114f*blue;
 	}
+}
+
+void convert_rgb_to_grayscale_cuda(uchar3 * inPixels, int width, int height, int * outPixels, int blockSize)
+{
+	// Allocate device memory
+	uchar3 *d_inPixels;
+	int *d_outPixels;
+	size_t inBytes = width * height * sizeof(uchar3);
+	size_t outBytes = width * height * sizeof(int);
+	CHECK(cudaMalloc(&d_inPixels, inBytes));
+	CHECK(cudaMalloc(&d_outPixels, outBytes));
+	// Copy data to device memory
+	CHECK(cudaMemcpy(d_inPixels, inPixels, inBytes, cudaMemcpyHostToDevice));
+	// Set grid size and call kernel
+	dim3 blkSize(blockSize, blockSize);
+	dim3 gridSize((width - 1) / blockSize + 1, (height - 1) / blockSize + 1);
+	rgb_to_grayscale_kernel<<<gridSize, blkSize>>>(d_inPixels, width, height, d_outPixels);
+	CHECK(cudaDeviceSynchronize());
+	CHECK(cudaGetLastError());
+	// Copy result from device memory
+	CHECK(cudaMemcpy(outPixels, d_outPixels, outBytes, cudaMemcpyDeviceToHost));
+	// Free device memory
+	CHECK(cudaFree(d_inPixels));
+	CHECK(cudaFree(d_outPixels));
+}
+
+__global__ void filter_kernel(int* inPixels, int width, int height, int* outPixels, int streamIdx) {	
+	int r = blockIdx.y * blockDim.y + threadIdx.y;
+    int c = blockIdx.x * blockDim.x + threadIdx.x;
+	extern __shared__ int s_inPixels[];
+
+	if (r < height && c < width)
+		s_inPixels[threadIdx.y * blockDim.x + threadIdx.x] = inPixels[r * width + c];
+
+	__syncthreads(); // Wait for all threads in block to allocate shared memory for faster input read
+	
+	int half_fWidth = filterWidth / 2;
+	if (r < height && c < width){
+		int count = 0, index, r_new, c_new, r_out, c_out;
+		float fpixel = 0;
+		int pos = r * width + c;
+
+		for (int r_filter = -half_fWidth; r_filter <= half_fWidth; r_filter++){
+			for (int c_filter = -half_fWidth; c_filter <= half_fWidth; c_filter++) {
+				r_new = threadIdx.y + r_filter;
+				c_new = threadIdx.x + c_filter;
+
+				if (0 <= r_new && r_new < blockDim.y &&
+				    0 <= c_new && c_new < blockDim.x) {
+					index = r_new * blockDim.x + c_new;
+					fpixel += filters[streamIdx][count] * (float) s_inPixels[index];
+				}
+				else { 
+					r_out = min(max(r + r_filter, 0),height-1);
+					c_out = min(max(c + c_filter, 0),width-1);
+					index = r_out * width + c_out;
+					fpixel += filters[streamIdx][count] * (float) inPixels[index];
+				}
+				count++;
+			}
+		}
+
+		// fpixel = min(max(0.f, fpixel), 255.f);
+		outPixels[pos] = (int) fpixel;
+	}
+}
+
+__global__ void filter_kernel_(int* inPixels, int width, int height, int* outPixels) {
 	
 }
 
-// void apply_filter(uchar3* inPixels, int width, int height, float * filter, int filterWidth, uchar3* outPixels) {
-void apply_filter(int* inPixels, int width, int height, float * filter, int filterWidth, int* outPixels) {
-	int half_fWidth = filterWidth / 2;
-	// Loop over image
-	for (int r = 0; r < height; ++r) {
-		for (int c = 0; c < width; ++c) {
-			// Set output element to default value
-			int pos = r * width + c;
-			float fpixel = 0; //Use float to avoiding rounding error during summation
+void apply_filter_cuda(int* inPixels, int width, int height, int** outPixels, int blockSize) {
+	// Pin host memory for async memcpy
+	size_t nBytes = width * height * sizeof(int);
+	CHECK(cudaHostRegister(inPixels, nBytes, cudaHostRegisterDefault));
+	for (int i = 0; i < NFILTERS; ++i) {
+		CHECK(cudaHostRegister(outPixels[i], nBytes, cudaHostRegisterDefault));
+	}
 
-			// Loop over filter
-			for (int f_r = -half_fWidth; f_r <= half_fWidth; ++f_r) {
-				for (int f_c = -half_fWidth; f_c <= half_fWidth; ++f_c) {
-					// Get the matrix element corresponding to the filter element's position
-					int i = r + f_r,
-						j = c + f_c;
-					// Clamp the row and column indices if they are out of bounds
-					i = i < 0 ? 0 : i;
-					i = i > height - 1 ? height - 1 : i;
-					j = j < 0 ? 0 : j;
-					j = j > width - 1 ? width - 1 : j;
-					// Calculate input position and filter position in 1D
-					int in_pos = i * width + j,
-						f_pos = (f_r + half_fWidth) * filterWidth + (f_c + half_fWidth);
-					// Do convolution
-					fpixel += (float) inPixels[in_pos] * filter[f_pos];
-				}
-			}
-			
-			// fpixel = min(max(0.f, fpixel), 255.f);
-			outPixels[pos] = (int) fpixel;
-		}
+	// Allocate device memory to use with n-filter streams
+	int *d_in, **d_out;
+	CHECK(cudaMalloc(&d_in, nBytes));
+	d_out = (int**) malloc(NFILTERS * sizeof(int*));
+	for (int i = 0; i < NFILTERS; ++i) {
+		CHECK(cudaMalloc(&d_out[i], nBytes));
+	}
+
+	// Create "nStreams" device streams
+	cudaStream_t *streams = (cudaStream_t*) malloc(NFILTERS * sizeof(cudaStream_t));
+	for (int i = 0; i < NFILTERS; ++i) {
+		CHECK(cudaStreamCreate(&streams[i]));
+	}
+
+	// Let each stream performs convolution with each filter separately
+	// Copy input to device
+	CHECK(cudaMemcpy(d_in, inPixels, nBytes, cudaMemcpyHostToDevice));
+	for (int i = 0; i < NFILTERS; ++i) {
+		// Set grid size
+		dim3 blkSize(blockSize, blockSize);
+		dim3 gridSize((width - 1) / blockSize + 1, (height - 1) / blockSize + 1);
+		filter_kernel<<<gridSize, blockSize, (blkSize.y)*(blkSize.x)*sizeof(int), streams[i]>>>(d_in, width, height, d_out[i], i);
+		// Copy device output to host
+		CHECK(cudaMemcpyAsync(outPixels[i], d_out[i], nBytes, cudaMemcpyDeviceToHost, streams[i]));
+	}
+
+	// Wait for all streams to complete
+	CHECK(cudaDeviceSynchronize());
+	CHECK(cudaGetLastError());
+
+	// Destroy device streams
+	for (int i = 0; i < NFILTERS; ++i) {
+		CHECK(cudaStreamDestroy(streams[i]));
+	}
+	free(streams);
+
+	// Free device memory regions
+	CHECK(cudaFree(d_in));
+	for (int i = 0; i < NFILTERS; ++i) {
+		CHECK(cudaFree(d_out[i]));
+	}
+	free(d_out);
+
+	// Unpin host memory regions
+	CHECK(cudaHostUnregister(inPixels));
+	for (int i = 0; i < NFILTERS; ++i) {
+		CHECK(cudaHostUnregister(outPixels[i]));
 	}
 }
 
@@ -176,6 +279,7 @@ __global__ void create_pair(int * d_in, int width, int height, pair_int_int * ou
 int get_k_best_cuda(int * important_matrix, int * important_matrix_trace, 
 				int width,int height, int k, pair_int_int * k_best,int blockSize)
 {
+	// Find seam energy-position pairs in parallel
 	size_t pair_nBytes = width * sizeof(pair_int_int);
   	size_t nBytes = width * sizeof(int);
 	pair_int_int * tmp_list = (pair_int_int *)malloc(width *sizeof(pair_int_int));
@@ -187,19 +291,21 @@ int get_k_best_cuda(int * important_matrix, int * important_matrix_trace,
 	int index = (height-1)*width;
 	CHECK(cudaMemcpy(d_important_matrix, important_matrix+index, nBytes, cudaMemcpyHostToDevice));
 	create_pair<<<gridSize_x1, blockSize>>>(d_important_matrix,width, height, out_pair);
-	cudaDeviceSynchronize();
+	CHECK(cudaDeviceSynchronize());
     CHECK(cudaGetLastError());
 	CHECK(cudaMemcpy(tmp_list, out_pair, pair_nBytes, cudaMemcpyDeviceToHost));
-	
-	qsort(tmp_list, width, sizeof(pair_int_int),compare);
+	CHECK(cudaFree(d_important_matrix));
+	CHECK(cudaFree(out_pair));
 
-	// số lượng K quá nhỏ để nên làm song song
+	// Traceback seams sequentially
+	qsort(tmp_list, width, sizeof(pair_int_int),compare);
+	
 	int count = 0;
 	for (int i=0; i<width && count<k; i++){
-		// get trace không thể song song
+		// get_trace can't be parallelize
 		count += get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+count*height);
-		// printf("%i ", count);
 	}
+	free(tmp_list);
 	return count;
 }
 

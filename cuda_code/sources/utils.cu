@@ -1,3 +1,4 @@
+#pragma once
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -150,4 +151,37 @@ void colorSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pair
 		outPixels[row * width + col].y = 0;
 		outPixels[row * width + col].z = 0;
 	}
+}
+
+// Utility function to check GPU info
+void printDeviceInfo()
+{
+	cudaDeviceProp devProv;
+    CHECK(cudaGetDeviceProperties(&devProv, 0));
+    printf("**********GPU info**********\n");
+    printf("Name: %s\n", devProv.name);
+    printf("Compute capability: %d.%d\n", devProv.major, devProv.minor);
+    printf("Num SMs: %d\n", devProv.multiProcessorCount);
+    printf("Max num threads per SM: %d\n", devProv.maxThreadsPerMultiProcessor); 
+    printf("Max num warps per SM: %d\n", devProv.maxThreadsPerMultiProcessor / devProv.warpSize);
+    printf("GMEM: %zu bytes\n", devProv.totalGlobalMem);
+    printf("****************************\n\n");
+
+}
+
+// Comparators for sorting
+int compare(const void *a, const void *b) {
+  
+    pair_int_int *pairA = (pair_int_int *)a;
+    pair_int_int *pairB = (pair_int_int *)b;
+  
+    return pairA->first > pairB->first;
+}
+
+int compare_position(const void *a, const void *b) {
+  
+    pair_int_int *pairA = (pair_int_int *)a;
+    pair_int_int *pairB = (pair_int_int *)b;
+  
+	return pairA->first > pairB->first || (pairA->first == pairB->first && pairA->second > pairB->second);
 }
