@@ -4,7 +4,7 @@
 /****************************************************************************/
 /* IMPLEMENTATION OF SEQUENTIAL SEAM CARVING */
 /****************************************************************************/
-int d[3] = {0,1,-1};
+int d[3] = {-1,0,1};
 
 void convert_rgb_to_grayscale(uchar3 * inPixels, int width, int height, int * outPixels)
 {
@@ -58,18 +58,20 @@ void apply_filter(int* inPixels, int width, int height, float * filter, int filt
 	}
 }
 
-void calc_px_importance(int *inPixels_1 , int *inPixels_2, int* outPixels,int width, int height)
+void calc_px_importance(int **inPixels, int* outPixels,int width, int height, int numFilters)
 {
 	for (int i = 0; i < height*width; i++) {
-		// float in1 = 0.299f * inPixels_1[i].x + 0.587f*inPixels_1[i].y + 0.114f*inPixels_1[i].z;
-		// float in2 = 0.299f * inPixels_2[i].x + 0.587f*inPixels_2[i].y + 0.114f*inPixels_2[i].z;
-		outPixels[i] = abs(inPixels_1[i])  + abs(inPixels_2[i]);	
+		// outPixels[i] = abs(inPixels_1[i])  + abs(inPixels_2[i]);	
+		outPixels[i] = 0;
+		for (int j = 0; j < numFilters; ++j)
+			outPixels[i] += abs(inPixels[j][i]);
 	}
 }
 
 void create_important_matrix(int * inPixels ,int width, int height, 
 			int * outMatrix, int * outMatrixTrace)
 {
+	// printf("%i %i\n", width, height);
 	for (int r = 0; r < height; r++) 
         for (int c = 0; c < width; c++){ 
 			outMatrix[r*width + c] = 1000000000;
@@ -113,19 +115,22 @@ int get_trace(int *important_matrix_trace, int position,int width, int height, p
 	int tmp_position_old = position;
 
 	while (tmp_height--){
-		// printf("x%i ", tmp_height);
 		int count = 0;
 		if (tmp_height==0) break;
 		while (important_matrix_trace[tmp_height*width+tmp_position] == -1){
 			if (count == 3) return 0;
-			tmp_position = tmp_position_old + d[count];
+			if (tmp_position_old + d[count] >= 0 && tmp_position_old + d[count] < width)
+				tmp_position = tmp_position_old + d[count];
 			count += 1;
 		}
+		// if (tmp_position < 0 || tmp_position >= width)
+		// 	printf("%i %i %i %i %i\n", width, height, tmp_height, tmp_position, important_matrix_trace[tmp_height*width+tmp_position]);
 		res[tmp_height] = {tmp_height, tmp_position};
 		tmp_position_old = tmp_position;
 		int tmp = d[important_matrix_trace[tmp_height*width+tmp_position]];
 		important_matrix_trace[tmp_height*width+tmp_position] = -1;
 		tmp_position += tmp;
+		
 	}
 	res[tmp_height] = {tmp_height, tmp_position};
 	return 1;
@@ -141,10 +146,7 @@ int get_k_best(int * important_matrix, int * important_matrix_trace,
 		tmp_list[i].second = i;
 	}
 	qsort(tmp_list, width, sizeof(pair_int_int),compare);
-	for (int i = 0; i < 20; ++i) {
-		printf("%i %i\n", tmp_list[i].first, tmp_list[i].second);
-	}
-  printf("\n");
+
 	int count = 0;
 	for (int i=0; i<width && count<k; i++){
 		// get trace không thể song song
@@ -157,17 +159,18 @@ int get_k_best(int * important_matrix, int * important_matrix_trace,
 __global__ void dp_cuda(int * inPixels ,int width, int height, int r, 
 			int * outMatrix, int * outMatrixTrace)
 {
-	int d[3] = {-1,0,1};
+	int d[3] = {0,1,-1};
 	
 	int c = blockIdx.x * blockDim.x + threadIdx.x;
 	outMatrix[r*width + c] = 1000000000;
 	for (int k = 0; k < 3; k++)
 		if (r > 0){
-			int tmp = outMatrix[(r-1)*width + c+d[k]] + inPixels[r*width + c];
-			if (0 <= c+d[k] && c+d[k] < width && 
-				outMatrix[r*width + c] > tmp){
-				outMatrix[r*width + c] = tmp;
-				outMatrixTrace[r*width + c] = k;
+			if (0 <= c+d[k] && c+d[k] < width) {
+				int tmp = outMatrix[(r-1)*width + c+d[k]] + inPixels[r*width + c];
+				if (outMatrix[r*width + c] > tmp){
+					outMatrix[r*width + c] = tmp;
+					outMatrixTrace[r*width + c] = k;
+				}
 			}
 		}
 		else
@@ -202,12 +205,6 @@ int get_k_best_cuda(int * important_matrix, int * important_matrix_trace,
 	cudaDeviceSynchronize();
     CHECK(cudaGetLastError());
 	CHECK(cudaMemcpy(tmp_list, out_pair, pair_nBytes, cudaMemcpyDeviceToHost));
-
-	// for (int i=0; i < width; i++)
-	// {
-	// 	tmp_list[i].first = important_matrix[(height-1) * width + i];
-	// 	tmp_list[i].second = i;
-	// }
 	
 	qsort(tmp_list, width, sizeof(pair_int_int),compare);
 
@@ -264,16 +261,16 @@ void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pai
 		// Enlarge image size
 		for (int i = 0; i < height; ++i) {
 			// Use 2 pointers to duplicate seams in a row
-			int outIte = outputWidth - 1, inIte = width - 1, seamIte = k - 1;
-			while (inIte >= 0) {
+			int outIte = 0, inIte = 0, seamIte = 0;
+			while (outIte < outputWidth) {
 				outPixels[i * outputWidth + outIte] = inPixels[i * width + inIte];
-				--outIte;
-				while (seamIte >= 0 && inIte == seams[i * k + seamIte].second) {
+				++outIte;
+				while (outIte < outputWidth && seamIte < k && inIte == seams[i * k + seamIte].second) {
 					outPixels[i * outputWidth + outIte] = inPixels[i * width + inIte];
-					--outIte;
-					--seamIte;
+					++outIte;
+					++seamIte;
 				}
-				--inIte;
+				++inIte;
 			}
 		}
 	}
