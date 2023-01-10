@@ -20,7 +20,7 @@ __constant__ float filters[4][9] = {
 	{-1.0,-1.0,-1.0,-1.0,8.0,-1.0,-1.0,-1.0,-1.0}
 };
 
-int d[3] = {-1,0,1};
+int d[3] = {-1,0,1}; // For DP in get_trace
 
 __global__ void rgb_to_grayscale_kernel(uchar3 * inPixels, int width, int height, int * outPixels) {
 	// Reminder: gray = 0.299*red + 0.587*green + 0.114*blue  
@@ -293,6 +293,25 @@ __global__ void create_pair(int * d_in, int width, int height, pair_int_int * ou
 		out_pair[i].first = d_in[i];
 		out_pair[i].second = i;
 	}
+}
+
+int get_k_best(int * important_matrix, int * important_matrix_trace, 
+				int width,int height, int k, pair_int_int * k_best)
+{
+	pair_int_int * tmp_list = (pair_int_int *)malloc(width *sizeof(pair_int_int));
+	for (int i=0; i < width; i++)
+	{
+		tmp_list[i].first = important_matrix[(height-1) * width + i];
+		tmp_list[i].second = i;
+	}
+	qsort(tmp_list, width, sizeof(pair_int_int),compare);
+
+	int count = 0;
+	for (int i=0; i<width && count<k; i++){
+		count += get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+count*height);
+	}
+	free(tmp_list);
+	return count;
 }
 
 int get_k_best_cuda(int * important_matrix, int * important_matrix_trace, 

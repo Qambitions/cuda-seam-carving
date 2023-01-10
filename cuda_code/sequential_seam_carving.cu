@@ -107,8 +107,6 @@ int get_trace(int *important_matrix_trace, int position,int width, int height, p
 				tmp_position = tmp_position_old + d[count];
 			count += 1;
 		}
-		// if (tmp_position < 0 || tmp_position >= width)
-		// 	printf("%i %i %i %i %i\n", width, height, tmp_height, tmp_position, important_matrix_trace[tmp_height*width+tmp_position]);
 		res[tmp_height] = {tmp_height, tmp_position};
 		tmp_position_old = tmp_position;
 		int tmp = d[important_matrix_trace[tmp_height*width+tmp_position]];

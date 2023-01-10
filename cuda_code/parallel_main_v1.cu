@@ -127,7 +127,7 @@ int main(int argc, char ** argv) {
 		pair_int_int * k_best_list = (pair_int_int *)malloc(seamUse * height * sizeof(pair_int_int));
 		
 		timer.Start();
-		int actualK = get_k_best_cuda(importantMatrix, importantMatrixTrace, width, height, seamUse, k_best_list, blockSize);
+		int actualK = get_k_best(importantMatrix, importantMatrixTrace, width, height, seamUse, k_best_list);
 		timer.Stop();
 		time = timer.Elapsed();
 		if (isVerbose) {
