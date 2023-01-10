@@ -94,7 +94,7 @@ int compare(const void *a, const void *b) {
     pair_int_int *pairA = (pair_int_int *)a;
     pair_int_int *pairB = (pair_int_int *)b;
   
-    return pairA->first < pairB->first;
+    return pairA->first > pairB->first;
 }
 
 int compare_position(const void *a, const void *b) {
