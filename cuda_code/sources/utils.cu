@@ -185,3 +185,15 @@ int compare_position(const void *a, const void *b) {
   
 	return pairA->first > pairB->first || (pairA->first == pairB->first && pairA->second > pairB->second);
 }
+
+// Function to compute filter result error
+float computeError(int * a1, int * a2, int n)
+{
+	float err = 0;
+	for (int i = 0; i < n; i++)
+	{
+		err += abs((int)a1[i] - (int)a2[i]);
+	}
+	err /= n;
+	return err;
+}

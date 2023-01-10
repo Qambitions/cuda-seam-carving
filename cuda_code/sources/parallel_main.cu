@@ -77,11 +77,6 @@ int main(int argc, char ** argv) {
 		total_time_sequential += time;
 		avgTimes[0] += time;
 
-		if (loopTimes == 1) {
-			char fName1[] = "grayscale.pnm";
-			writePnm(grayscalePixels, 1, width, height, fName1);
-		}
-
 		// Do convolution with edge detection filters
 		int* filteredPixels[4];
 		for (int i = 0; i < 4; ++i)
@@ -102,7 +97,7 @@ int main(int argc, char ** argv) {
 		int * pixelImportance = (int *)malloc(width * height * sizeof(int));
 		
 		timer.Start();
-		calc_px_importance(filteredPixels, pixelImportance, width, height, 4);
+		calc_px_importance_cuda(filteredPixels, pixelImportance, width, height, blockSize);
 		timer.Stop();
 		time = timer.Elapsed();
 		if (isVerbose)
@@ -118,7 +113,7 @@ int main(int argc, char ** argv) {
 		int * importantMatrixTrace = (int *)malloc(width * height * sizeof(int));
 
 		timer.Start();
-		create_important_matrix(pixelImportance, width, height, importantMatrix, importantMatrixTrace);
+		create_important_matrix_cuda(pixelImportance, width, height, importantMatrix, importantMatrixTrace, blockSize);
 		timer.Stop();
 		time = timer.Elapsed();
 		if (isVerbose)
@@ -132,7 +127,7 @@ int main(int argc, char ** argv) {
 		pair_int_int * k_best_list = (pair_int_int *)malloc(seamUse * height * sizeof(pair_int_int));
 		
 		timer.Start();
-		int actualK = get_k_best(importantMatrix, importantMatrixTrace, width, height, seamUse, k_best_list);
+		int actualK = get_k_best_cuda(importantMatrix, importantMatrixTrace, width, height, seamUse, k_best_list, blockSize);
 		timer.Stop();
 		time = timer.Elapsed();
 		if (isVerbose) {
@@ -143,7 +138,7 @@ int main(int argc, char ** argv) {
 		avgTimes[4] += time;
 
         // For debugging, output the seam visualization to a file
-		// if ((loopTimes - 1) % 3 == 0) {
+		// if ((loopTimes - 1) % 1 == 0) {
 		// 	uchar3 *seamPixels = (uchar3 *)malloc(width * height * sizeof(uchar3));
 		// 	colorSeams(inPixels, seamPixels, width, height, k_best_list, actualK);
 		// 	char *fName = (char*)malloc(sizeof(char) * 20);
@@ -174,7 +169,7 @@ int main(int argc, char ** argv) {
 		outPixels = (uchar3 *)malloc(outWidth * height * sizeof(uchar3));
 
 		timer.Start();
-		applyKSeams(inPixels, outPixels, width, height, k_best_list, actualK, mode);
+		applyKSeams_cuda(inPixels, outPixels, width, height, k_best_list, actualK, mode, blockSize);
 		timer.Stop();
 		time = timer.Elapsed();
 		if (isVerbose)

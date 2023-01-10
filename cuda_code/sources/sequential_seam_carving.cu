@@ -1,3 +1,4 @@
+#pragma once
 #include "./utils.cu"
 #include <cuda_runtime.h>
 
@@ -71,7 +72,6 @@ void calc_px_importance(int **inPixels, int* outPixels,int width, int height, in
 void create_important_matrix(int * inPixels ,int width, int height, 
 			int * outMatrix, int * outMatrixTrace)
 {
-	// printf("%i %i\n", width, height);
 	for (int r = 0; r < height; r++) 
         for (int c = 0; c < width; c++){ 
 			outMatrix[r*width + c] = 1000000000;
@@ -133,94 +133,10 @@ int get_k_best(int * important_matrix, int * important_matrix_trace,
 
 	int count = 0;
 	for (int i=0; i<width && count<k; i++){
-		// get trace không thể song song
 		count += get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+count*height);
-		// printf("%i ", count);
 	}
 	free(tmp_list);
 	return count;
-}
-
-__global__ void dp_cuda(int * inPixels ,int width, int height, int r, 
-			int * outMatrix, int * outMatrixTrace)
-{
-	int d[3] = {0,1,-1};
-	
-	int c = blockIdx.x * blockDim.x + threadIdx.x;
-	outMatrix[r*width + c] = 1000000000;
-	for (int k = 0; k < 3; k++)
-		if (r > 0){
-			if (0 <= c+d[k] && c+d[k] < width) {
-				int tmp = outMatrix[(r-1)*width + c+d[k]] + inPixels[r*width + c];
-				if (outMatrix[r*width + c] > tmp){
-					outMatrix[r*width + c] = tmp;
-					outMatrixTrace[r*width + c] = k;
-				}
-			}
-		}
-		else
-		{
-			outMatrix[r*width + c] = inPixels[r*width + c];
-			outMatrixTrace[r*width + c] = -1;
-		}
-}
-
-__global__ void create_pair(int * d_in, int width, int height, pair_int_int * out_pair){
-	int i = blockIdx.x * blockDim.x + threadIdx.x;
-	if (i<width){
-		out_pair[i].first = d_in[i];
-		out_pair[i].second = i;
-	}
-}
-
-int get_k_best_cuda(int * important_matrix, int * important_matrix_trace, 
-				int width,int height, int k, pair_int_int * k_best,int blockSize)
-{
-	size_t pair_nBytes = width * sizeof(pair_int_int);
-  	size_t nBytes = width * sizeof(int);
-	pair_int_int * tmp_list = (pair_int_int *)malloc(width *sizeof(pair_int_int));
-	dim3 gridSize_x1((width - 1) / blockSize + 1);
-	int * d_important_matrix;
-	pair_int_int * out_pair;
-	CHECK(cudaMalloc(&d_important_matrix, nBytes));
-	CHECK(cudaMalloc(&out_pair, pair_nBytes));
-	int index = (height-1)*width;
-	CHECK(cudaMemcpy(d_important_matrix, important_matrix+index, nBytes, cudaMemcpyHostToDevice));
-	create_pair<<<gridSize_x1, blockSize>>>(d_important_matrix,width, height, out_pair);
-	cudaDeviceSynchronize();
-    CHECK(cudaGetLastError());
-	CHECK(cudaMemcpy(tmp_list, out_pair, pair_nBytes, cudaMemcpyDeviceToHost));
-	
-	qsort(tmp_list, width, sizeof(pair_int_int),compare);
-
-	// số lượng K quá nhỏ để nên làm song song
-	int count = 0;
-	for (int i=0; i<width && count<k; i++){
-		// get trace không thể song song
-		count += get_trace(important_matrix_trace,tmp_list[i].second,width, height,k_best+count*height);
-		// printf("%i ", count);
-	}
-	return count;
-}
-
-void create_important_matrix_cuda(int * important_pixels ,int width, int height, 
-			int * outMatrix, int * outMatrixTrace, int blockSize){
-	// nice version
-	size_t nBytes = width * height * sizeof(int);
-	dim3 gridSize_x1((width - 1) / blockSize + 1);
-	
-	int * d_important_pixels, * d_important_matrix, * d_important_matrix_trace;
-	CHECK(cudaMalloc(&d_important_pixels, nBytes));
-	CHECK(cudaMalloc(&d_important_matrix, nBytes));
-	CHECK(cudaMalloc(&d_important_matrix_trace, nBytes));
-	CHECK(cudaMemcpy(d_important_pixels, important_pixels, nBytes, cudaMemcpyHostToDevice));
-	for (int r=0; r<height; r++){
-		dp_cuda<<<gridSize_x1, blockSize>>>(d_important_pixels,width, height, r, d_important_matrix,d_important_matrix_trace);
-        cudaDeviceSynchronize();
-        CHECK(cudaGetLastError());
-	}
-	CHECK(cudaMemcpy(outMatrix, d_important_matrix, nBytes, cudaMemcpyDeviceToHost));
-	CHECK(cudaMemcpy(outMatrixTrace, d_important_matrix_trace, nBytes, cudaMemcpyDeviceToHost));	
 }
 
 void applyKSeams(uchar3* inPixels, uchar3* outPixels, int width, int height, pair_int_int* seams, int k, int mode) {
